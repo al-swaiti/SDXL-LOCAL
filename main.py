@@ -91,9 +91,11 @@ def enhance_prompt_with_gemini(prompt, api_key):
             # Generate content using Gemini API with the instruction prompt
             model = genai.GenerativeModel('gemini-1.5-pro')
             response = model.generate_content(instruction)
+            print("Gemini API response:", response)  # Debug statement to show response from Gemini
             enhanced_prompt = response.text.strip()
             return enhanced_prompt
         else:
+            print("No Gemini API key provided. Using original prompt.")
             return prompt
     except Exception as e:
         print(f"Failed to enhance prompt with Gemini API: {e}")
@@ -102,8 +104,6 @@ def enhance_prompt_with_gemini(prompt, api_key):
 # Main script logic
 def main():
     while True:
-    
-
         model_location, prompt, negative_prompt, width, height, steps, cfg_scale, seed, gemini_api_key = get_or_load_user_inputs()
 
         # Validate model path
@@ -129,9 +129,9 @@ def main():
         input("Press Enter to continue with the image generation...")
 
         vae = AutoencoderTiny.from_pretrained(
-        'madebyollin/taesdxl',
-        use_safetensors=True,
-        torch_dtype=torch.float16,
+            'madebyollin/taesdxl',
+            use_safetensors=True,
+            torch_dtype=torch.float16,
         )
 
         pipe = StableDiffusionXLPipeline.from_single_file(
@@ -140,19 +140,15 @@ def main():
             use_safetensors=True,
             vae=vae
         )
-
-        
         
         pipe.to("cuda")
         
         #torch.compile increase speed 20%-30% , work with python <= 3.11 , and little more time for first image creation 
         pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
-
         # for low gpu disable pipe.to("cuda") and enable this line below
         # pipe.enable_sequential_cpu_offload()
         
-
         # Set the seed for reproducibility
         generator = torch.manual_seed(seed)
 
