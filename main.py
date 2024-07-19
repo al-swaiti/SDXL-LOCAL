@@ -1,12 +1,16 @@
 import json
 import os
 import torch
-from diffusers import StableDiffusionXLPipeline, AutoencoderTiny
+from diffusers import StableDiffusionXLPipeline, AutoencoderTiny, SASolverScheduler
 import accelerate
 from PIL import Image
 import google.generativeai as genai
 import random
 from datetime import datetime
+
+
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 CONFIG_FILE = "config.json"
 
@@ -20,7 +24,6 @@ def get_or_load_user_inputs():
         "height": 1024,
         "steps": 30,
         "cfg_scale": 5,
-        "seed": None,  # None indicates a random seed will be used
         "gemini_api_key": ""
     }
 
@@ -38,7 +41,7 @@ def get_or_load_user_inputs():
     height = input(f"Height of the image [{config['height']}]: ").strip() or config['height']
     steps = input(f"Number of inference steps [{config['steps']}]: ").strip() or config['steps']
     cfg_scale = input(f"CFG scale [{config['cfg_scale']}]: ").strip() or config['cfg_scale']
-    seed = input(f"Seed [{config['seed']}]: ").strip() or config['seed']
+    seed = input(f"Seed : ") or  random.randint(0, 2**32 - 1)
     gemini_api_key = input(f"Gemini API key (optional) [{config.get('gemini_api_key', '')}]: ").strip() or config.get('gemini_api_key')
     
     # Convert inputs to proper types, using default values if inputs are empty
@@ -46,10 +49,10 @@ def get_or_load_user_inputs():
     height = int(height) if height else config['height']
     steps = int(steps) if steps else config['steps']
     cfg_scale = float(cfg_scale) if cfg_scale else config['cfg_scale']
-    seed = int(seed) if seed else random.randint(0, 2**32 - 1)
+    seed = int(seed)
     
     # Save updated values back to config file
-    save_user_inputs(model_location, prompt, negative_prompt, width, height, steps, cfg_scale, seed, gemini_api_key=gemini_api_key)
+    save_user_inputs(model_location, prompt, negative_prompt, width, height, steps, cfg_scale, gemini_api_key=gemini_api_key)
     
     return (
         model_location,
@@ -64,7 +67,7 @@ def get_or_load_user_inputs():
     )
 
 # Function to save user inputs to a file
-def save_user_inputs(model_location, prompt, negative_prompt, width, height, steps, cfg_scale, seed, gemini_api_key=None):
+def save_user_inputs(model_location, prompt, negative_prompt, width, height, steps, cfg_scale, gemini_api_key=None):
     config = {
         "model_location": model_location,
         "prompt": prompt,
@@ -73,7 +76,6 @@ def save_user_inputs(model_location, prompt, negative_prompt, width, height, ste
         "height": height,
         "steps": steps,
         "cfg_scale": cfg_scale,
-        "seed": seed,
         "gemini_api_key": gemini_api_key,
     }
     with open(CONFIG_FILE, "w") as f:
@@ -141,10 +143,13 @@ def main():
             vae=vae
         )
         
-        pipe.to("cuda")
+        pipe.to(device)
+
+
+        pipe.scheduler = SASolverScheduler.from_config(pipe.scheduler.config, algorithm_type='data_prediction', tau_func=lambda t: 1 if 200 <= t <= 800 else 0, predictor_order=2, corrector_order=2)
         
         #torch.compile increase speed 20%-30% , work with python <= 3.11 , and little more time for first image creation 
-        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+        # pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
         # for low gpu disable pipe.to("cuda") and enable this line below
         # pipe.enable_sequential_cpu_offload()
